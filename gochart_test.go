@@ -56,8 +56,8 @@ func readCsv(filename string) (*chart.TimeSeries, error) {
 func TestGoChart(t *testing.T) {
 
 	// FIXME: handle error
-	kafka, _ := readCsv("kafka.csv")
-	jmxexporter, _ := readCsv("jmxexporter.csv")
+	kafka, _ := readCsv("stats.csv")
+	// jmxexporter, _ := readCsv("jmxexporter.csv")
 
 	// Max value in range
 	var m float64
@@ -94,7 +94,7 @@ func TestGoChart(t *testing.T) {
 		},
 		Series: []chart.Series{
 			kafka,
-			jmxexporter,
+			// jmxexporter,
 		},
 	}
 
