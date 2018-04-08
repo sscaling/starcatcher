@@ -16,13 +16,13 @@ type RepoResponse struct {
 
 // ReadJSON reads input from io.Reader and produces a RepoResponse
 func ReadJSON(r io.Reader) (*RepoResponse, error) {
-	jsonBlob, err := ioutil.ReadAll(r)
+	j, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("can't read source bytes: %v", err)
 	}
 
 	result := &RepoResponse{}
-	err = json.Unmarshal(jsonBlob, result)
+	err = json.Unmarshal(j, result)
 	if err != nil {
 		return nil, fmt.Errorf("can't unmarshall JSON %v", err)
 	}
