@@ -31,6 +31,15 @@ func (r *RepoResponse) csv() []string {
 func main() {
 	fmt.Println("Star-catcher")
 
+	if len(os.Args) < 3 {
+		log.Fatalf("Usage: main <csv filename> <png filename>")
+	}
+
+	csvFilename := os.Args[1]
+	pngFilename := os.Args[2]
+
+	log.Printf("Generating %s from %s\n", pngFilename, csvFilename)
+
 	// 1. read stats from github
 	client := &http.Client{}
 	stats, err := readStats(client, "wurstmeister", "kafka-docker")
@@ -39,18 +48,18 @@ func main() {
 	}
 
 	// 2. append stats to CSV
-	if err = appendToCsv("stats.csv", stats); err != nil {
+	if err = appendToCsv(csvFilename, stats); err != nil {
 		log.Fatalf("Unable to append stats to CSV %v\n", err)
 	}
 
 	// 3. Read in CSV file and generate a timeseries
-	data, err := CsvToTimeSeries("stats.csv")
+	data, err := CsvToTimeSeries(csvFilename)
 	if err != nil {
 		log.Fatalf("Unable to load data from CSV and generate time series: %v\n", err)
 	}
 
 	// 4. Render a graph
-	if err = RenderGraph("/tmp/chart.png", data); err != nil {
+	if err = RenderGraph(pngFilename, data); err != nil {
 		log.Fatalf("Unable to render graph: %v", err)
 	}
 
