@@ -1,62 +1,20 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math"
-	"os"
 	"strconv"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/wcharczuk/go-chart"
 )
 
-func readCsv(filename string) (*chart.TimeSeries, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	data := chart.TimeSeries{
-		XValues: []time.Time{},
-		YValues: []float64{},
-	}
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		s := scanner.Text()
-		// fmt.Printf(">> %s\n", s)
-		parts := strings.Split(s, ",")
-		t, err := time.Parse(time.RFC3339, parts[0])
-		if err != nil {
-			fmt.Printf("Unable to process date in %s\n", s)
-		}
-
-		v, err := strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			fmt.Printf("Unable to process value in %s\n", s)
-		}
-
-		data.XValues = append(data.XValues, t)
-		data.YValues = append(data.YValues, v)
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	return &data, nil
-}
 func TestGoChart(t *testing.T) {
 
 	// FIXME: handle error
-	kafka, _ := readCsv("stats.csv")
+	kafka, _ := CsvToTimeSeries("stats.csv")
 	// jmxexporter, _ := readCsv("jmxexporter.csv")
 
 	// Max value in range
