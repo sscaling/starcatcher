@@ -45,6 +45,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/gocarina/gocsv"
+  packages = ["."]
+  revision = "a5c9099e2484f1551abb9433885e158610a25f4b"
+
+[[projects]]
+  branch = "master"
   name = "github.com/golang/freetype"
   packages = [
     "raster",
@@ -84,6 +90,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1a1cbd38158c89f6ab1a51c9c56fe8b42d79d994271f2dc39f46560ef1fea980"
+  inputs-digest = "9c31c9f9f9d4018d66857252381fb4e71f649577d5e0dac6d993cf1bffa18c3f"
   solver-name = "gps-cdcl"
   solver-version = 1
