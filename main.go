@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,116 +11,41 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/gocarina/gocsv"
 	chart "github.com/wcharczuk/go-chart"
 )
 
 // GithubStats represents the github repo information
 type GithubStats struct {
-	Stargazers  int `json:"stargazers_count"`
-	Forks       int `json:"forks_count"`
-	Watchers    int `json:"watchers"`
-	Subscribers int `json:"subscribers_count"`
-}
-
-func (s GithubStats) csv() []string {
-	return []string{
-		strconv.Itoa(s.Stargazers),
-		strconv.Itoa(s.Forks),
-		strconv.Itoa(s.Watchers),
-		strconv.Itoa(s.Subscribers),
-	}
+	Stargazers  float64 `json:"stargazers_count" csv:"gh:stars"`
+	Forks       int     `json:"forks_count" csv:"gh:forks"`
+	Watchers    int     `json:"watchers" csv:"gh:watchers"`
+	Subscribers int     `json:"subscribers_count" csv:"gh:subscribers"`
 }
 
 // DockerhubStats represents the dockerhub repo information
 type DockerhubStats struct {
-	Pulls int `json:"pull_count"`
-	Stars int `json:"star_count"`
+	Pulls float64 `json:"pull_count" csv:"dh:pulls"`
+	Stars int     `json:"star_count" csv:"dh:stars"`
 }
-
-func (s DockerhubStats) csv() []string {
-	return []string{
-		strconv.Itoa(s.Pulls),
-		strconv.Itoa(s.Stars),
-	}
-}
-
-const (
-	dateTime int = iota
-	githubStars
-	githubForks
-	githubWatchers
-	githubSubscribers
-	dockerPulls
-	dockerStars
-)
 
 // CsvRow represents one row in the CSV output
 type CsvRow struct {
-	DateTime string
+	DateTime time.Time `csv:"time"`
 	GithubStats
 	DockerhubStats
 }
 
-func newRow(g GithubStats, d DockerhubStats) *CsvRow {
-	return &CsvRow{
-		time.Now().Format(time.RFC3339),
-		g,
-		d,
-	}
-}
-
-// StatsCsv represents a CSV output file
-type StatsCsv struct {
-	FieldNames []string
-	Fields     []CsvRow
-}
-
-func (csv *StatsCsv) appendRow(row CsvRow) {
-	csv.Fields = append(csv.Fields, row)
-}
-
-// func newCsv(fieldNames []string) *StatsCsv {
-// 	return &StatsCsv{
-// 		FieldNames: []string{
-// 			"DateTime",
-// 			"GithubStars",
-// 			"GithubForks",
-// 			"GithubWatchers",
-// 			"GithubSubscribers",
-// 			"DockerPulls",
-// 			"DockerStars",
-// 		},
-// 		Fields: []string{},
-// 	}
-// }
-
-// const dateTime = 0
-// const githubStar = 1
-// const dockerPulls = 5
-
-func buildCsv(gh GithubStats, dh DockerhubStats) []string {
-	csv := []string{time.Now().Format(time.RFC3339)}
-	csv = append(csv, gh.csv()...)
-	return append(csv, dh.csv()...)
-}
-
-func appendToCsv(filename string, stats []string) error {
+func appendToCsv(filename string, stats *CsvRow) error {
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("unable to open %s file for append", filename)
 	}
 	defer file.Close()
 
-	w := csv.NewWriter(file)
-	if err = w.Write(stats); err != nil {
-		return fmt.Errorf("unable to append stats to %s", filename)
-	}
-	w.Flush()
-
-	return w.Error()
+	return gocsv.MarshalWithoutHeaders([]*CsvRow{stats}, file)
 }
 
 type statRequest struct {
@@ -185,8 +108,7 @@ type StatSource struct {
 	DockerhubURI string
 }
 
-// FIXME: should just be mapping of source to repo/users. Cannot use fixed user/repo combo
-func getStats(client *http.Client, src *StatSource) ([]string, error) {
+func getStats(client *http.Client, src *StatSource) (*CsvRow, error) {
 	var github GithubStats
 	req := newStatRequest(src.GithubURI)
 	req.Headers = map[string]string{"Accept": "application/vnd.github.v3+json"}
@@ -199,7 +121,7 @@ func getStats(client *http.Client, src *StatSource) ([]string, error) {
 		return nil, err
 	}
 
-	return buildCsv(github, dockerhub), nil
+	return &CsvRow{time.Now(), github, dockerhub}, nil
 }
 
 func readStats(client *http.Client, sr *statRequest, stats interface{}) error {
@@ -249,37 +171,15 @@ func CsvToTimeSeries(filename string) (*graphData, error) {
 		SecondaryY: []float64{},
 	}
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		s := scanner.Text()
-		parts := strings.Split(s, ",")
-		t, err := time.Parse(time.RFC3339, parts[dateTime])
-		if err != nil {
-			fmt.Printf("Unable to process date in %s\n", s)
-		}
-
-		v, err := strconv.ParseFloat(parts[githubStars], 64)
-		if err != nil {
-			fmt.Printf("Unable to process value in %s\n", s)
-		}
-
-		data.XValues = append(data.XValues, t)
-		data.YValues = append(data.YValues, v)
-
-		if len(parts) > dockerPulls {
-			v, err := strconv.ParseFloat(parts[dockerPulls], 64)
-			if err != nil {
-				fmt.Printf("Unable to process secondary value in %s\n", s)
-			}
-
-			data.SecondaryY = append(data.SecondaryY, v)
-		} else {
-			data.SecondaryY = append(data.SecondaryY, 0)
-		}
+	csv := []*CsvRow{}
+	if err := gocsv.UnmarshalFile(file, &csv); err != nil {
+		return nil, err
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+	for _, d := range csv {
+		data.XValues = append(data.XValues, d.DateTime)
+		data.YValues = append(data.YValues, d.Stargazers)
+		data.SecondaryY = append(data.SecondaryY, d.Pulls)
 	}
 
 	return &data, nil
@@ -322,6 +222,11 @@ func RenderGraph(filename string, data *graphData) error {
 			Style: chart.Style{
 				Show: true, //enables / displays the secondary y-axis
 			},
+			// FIXME: calculate this
+			Range: &chart.ContinuousRange{
+				Min: data.SecondaryY[0] - 1000000,
+				Max: data.SecondaryY[len(data.SecondaryY)-1] + 1000000,
+			},
 		},
 		Series: []chart.Series{
 			data.TimeSeries,
@@ -349,10 +254,5 @@ func ReadJSON(r io.Reader, result interface{}) error {
 		return fmt.Errorf("can't read source bytes: %v", err)
 	}
 
-	err = json.Unmarshal(j, result)
-	if err != nil {
-		return fmt.Errorf("can't unmarshall JSON %v", err)
-	}
-
-	return nil
+	return json.Unmarshal(j, result)
 }
