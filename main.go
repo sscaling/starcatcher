@@ -31,21 +31,21 @@ type DockerhubStats struct {
 	Stars int     `json:"star_count" csv:"dh:stars"`
 }
 
-// CsvRow represents one row in the CSV output
-type CsvRow struct {
+// CsvStat represents one row in the CSV output
+type CsvStat struct {
 	DateTime time.Time `csv:"time"`
 	GithubStats
 	DockerhubStats
 }
 
-func appendToCsv(filename string, stats *CsvRow) error {
+func appendToCsv(filename string, stats *CsvStat) error {
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("unable to open %s file for append", filename)
 	}
 	defer file.Close()
 
-	return gocsv.MarshalWithoutHeaders([]*CsvRow{stats}, file)
+	return gocsv.MarshalWithoutHeaders([]*CsvStat{stats}, file)
 }
 
 type statRequest struct {
@@ -67,16 +67,16 @@ func main() {
 		log.Fatalf("Usage: main <csv filename> <png filename>")
 	}
 
-	csvFilename := os.Args[1]
-	pngFilename := os.Args[2]
+	src := StatSource{
+		GithubURI:    os.Args[1],
+		DockerhubURI: os.Args[2],
+	}
+	csvFilename := os.Args[3]
+	pngFilename := os.Args[4]
 
 	log.Printf("Generating %s from %s\n", pngFilename, csvFilename)
 
 	// 1. read stats from github
-	src := StatSource{
-		GithubURI:    "https://api.github.com/repos/wurstmeister/kafka-docker",
-		DockerhubURI: "https://hub.docker.com/v2/repositories/wurstmeister/kafka/",
-	}
 	stats, err := getStats(&http.Client{}, &src)
 	if err != nil {
 		log.Fatalf("Unable to read stats: %v\n", err)
@@ -108,7 +108,7 @@ type StatSource struct {
 	DockerhubURI string
 }
 
-func getStats(client *http.Client, src *StatSource) (*CsvRow, error) {
+func getStats(client *http.Client, src *StatSource) (*CsvStat, error) {
 	var github GithubStats
 	req := newStatRequest(src.GithubURI)
 	req.Headers = map[string]string{"Accept": "application/vnd.github.v3+json"}
@@ -121,7 +121,7 @@ func getStats(client *http.Client, src *StatSource) (*CsvRow, error) {
 		return nil, err
 	}
 
-	return &CsvRow{time.Now(), github, dockerhub}, nil
+	return &CsvStat{time.Now(), github, dockerhub}, nil
 }
 
 func readStats(client *http.Client, sr *statRequest, stats interface{}) error {
@@ -171,11 +171,12 @@ func CsvToTimeSeries(filename string) (*graphData, error) {
 		SecondaryY: []float64{},
 	}
 
-	csv := []*CsvRow{}
+	csv := []*CsvStat{}
 	if err := gocsv.UnmarshalFile(file, &csv); err != nil {
 		return nil, err
 	}
 
+	data.TimeSeries.Name = "Github Stars"
 	for _, d := range csv {
 		data.XValues = append(data.XValues, d.DateTime)
 		data.YValues = append(data.YValues, d.Stargazers)
@@ -195,8 +196,11 @@ func RenderGraph(filename string, data *graphData) error {
 		min = math.Min(min, y-math.Mod(y, 50))
 	}
 
+	// Make sure we start at min 0
+	min = math.Max(min-100, 0)
+
 	ticks := []chart.Tick{}
-	for i := int(min) - 100; i < int(max)+100; i = i + 100 {
+	for i := int(min); i < int(max)+100; i = i + 100 {
 		ticks = append(ticks, chart.Tick{Value: float64(i), Label: strconv.Itoa(i)})
 	}
 
@@ -207,6 +211,8 @@ func RenderGraph(filename string, data *graphData) error {
 			},
 		},
 		YAxis: chart.YAxis{
+			Name:      "Github Stars",
+			NameStyle: chart.StyleShow(),
 			Style: chart.Style{
 				Show: true,
 			},
@@ -218,24 +224,37 @@ func RenderGraph(filename string, data *graphData) error {
 				Max: max,
 			},
 		},
+		Background: chart.Style{
+			Padding: chart.Box{
+				Top:  20,
+				Left: 40,
+			},
+		},
 		YAxisSecondary: chart.YAxis{
+			Name:      "Docker pulls",
+			NameStyle: chart.StyleShow(),
 			Style: chart.Style{
 				Show: true, //enables / displays the secondary y-axis
 			},
 			// FIXME: calculate this
 			Range: &chart.ContinuousRange{
-				Min: data.SecondaryY[0] - 1000000,
+				Min: math.Max(data.SecondaryY[0]-1000000, 0),
 				Max: data.SecondaryY[len(data.SecondaryY)-1] + 1000000,
 			},
 		},
 		Series: []chart.Series{
 			data.TimeSeries,
 			chart.TimeSeries{
+				Name:    "Docker pulls",
 				YAxis:   chart.YAxisSecondary,
 				XValues: data.XValues,
 				YValues: data.SecondaryY,
 			},
 		},
+	}
+
+	graph.Elements = []chart.Renderable{
+		chart.Legend(&graph),
 	}
 
 	buffer := bytes.NewBuffer([]byte{})
