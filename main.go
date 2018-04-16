@@ -21,7 +21,7 @@ import (
 type GithubStats struct {
 	Stargazers  float64 `json:"stargazers_count" csv:"gh:stars"`
 	Forks       int     `json:"forks_count" csv:"gh:forks"`
-	Watchers    int     `json:"watchers" csv:"gh:watchers"`
+	Issues      int     `json:"open_issues" csv:"gh:issues"`
 	Subscribers int     `json:"subscribers_count" csv:"gh:subscribers"`
 }
 
